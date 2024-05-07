@@ -3,7 +3,14 @@ import streamlit as st
 import mysql.connector
 from mysql.connector import Error
 from streamlit_option_menu import option_menu
+import pdb
 
+
+# Inicializar el estado de la sesión si es necesario
+if 'selected_category' not in st.session_state:
+    st.session_state.selected_category = []
+if 'selected_items' not in st.session_state:
+    st.session_state.selected_items = []
 
 # Configuración de la conexión a la base de datos
 def connect_to_database(host_name, user_name, user_password, db_name):
@@ -20,6 +27,7 @@ def connect_to_database(host_name, user_name, user_password, db_name):
         print(f"The error '{e}' occurred")
     return connection
 
+
 # Función para insertar datos en la base de datos
 def insert_data(connection, query):
     cursor = connection.cursor()
@@ -29,6 +37,7 @@ def insert_data(connection, query):
         print("Query executed successfully")
     except Error as e:
         print(f"The error '{e}' occurred")
+
 
 def get_options_based_on_selection(selected_items):
     options_mapping = {
@@ -40,7 +49,25 @@ def get_options_based_on_selection(selected_items):
     result_options = set()
     for item in selected_items:
         result_options.update(options_mapping.get(item, []))
+    print(list(result_options))
     return list(result_options)
+
+def get_options_based_on_selection(selection):
+    options_mapping = {
+        'Option A': ['Type 1', 'Type 2'],
+        'Option B': ['Type 3', 'Type 4'],
+        'Option C': ['Type 5', 'Type 6']
+    }
+
+    # Esta función devuelve las opciones para el segundo multiselect basado en la selección del primero
+    if not selection:
+        return []
+    else:
+        # Agrega todas las opciones posibles basadas en las categorías seleccionadas
+        options = []
+        for category in selection:
+            options.extend(options_mapping.get(category, []))
+        return options
 
 # Definición de la función principal del streamlit app
 def main():
@@ -49,42 +76,39 @@ def main():
 
     with st.sidebar:
         selected = option_menu("Menu", ["Formulario", 'Gráficos'],
-                               icons=['house', 'gear'], menu_icon="cast", default_index=1)
+                               icons=['house', 'gear'], menu_icon="cast", default_index=0)
     # Conexión a la base de datos
-    connection = connect_to_database("localhost", "root", "password", "your_database")
+    #connection = connect_to_database("localhost", "root", "password", "your_database")
 
     if selected == "Formulario":
         # Creación del formulario
-#        with st.form(key='my_form'):
-        text_input = st.text_input(label="Ingresa el nombre del activo:")
-        dropdown1 = st.selectbox('Elige el tipo de activo:', ['Opción 1', 'Opción 2', 'Opción 3'])
-        multiselect = st.multiselect('Elige las amenazas:', ['Option A', 'Option B', 'Option C'])
+        with st.form(key='my_form'):
+            nombre_activo = st.text_input(label="Ingresa el nombre del activo:")
+            tipo_activo = st.selectbox('Elige el tipo de activo:', ['Opción 1', 'Opción 2', 'Opción 3'])
+            #multiselect = st.multiselect('Elige las amenazas:', ['Option A', 'Option B', 'Option C'])
+            multiselect = st.multiselect('Elige las amenazas:', ['Option A', 'Option B', 'Option C'],
+                                         key='selected_category')
 
-        # Botón para consultar tipos de amenazas
-        consult_button = st.button("Consultar tipos de amenazas")
-
-        if consult_button:
+            # Esta variable debe inicializarse fuera del if para evitar errores de referencia
             multiselect1_options = get_options_based_on_selection(multiselect)
-        #else:
-        #    multiselect1_options = []
 
-        if multiselect1_options.count() == 0:
-            multiselect1 = st.multiselect('Elige los tipos de amenazas:', [])
-        else:
-            multiselect1 = st.multiselect('Elige los tipos de amenazas:', multiselect1_options)
+            #multiselect1 = st.multiselect('Elige los tipos de amenazas:', multiselect1_options)
+            multiselect1 = st.multiselect("Selecciona items:", multiselect1_options, key='selected_items')
 
-        submit_button = st.button("Enviar")
+            # Botón para enviar el formulario completo
+            submit_button = st.form_submit_button("Enviar")
 
-        # Lógica para manejar la inserción de datos en la base de datos
-        if submit_button:
-            query = f"""
-            INSERT INTO your_table (text_column, dropdown1_column, dropdown2_column, dropdown3_column)
-            VALUES ('{text_input}', '{dropdown1}');
-            """
-            insert_data(connection, query)
-
+            if submit_button:
+                query = f"""
+                INSERT INTO your_table (text_column, dropdown1_column, dropdown2_column, dropdown3_column)
+                VALUES ('{nombre_activo}', '{tipo_activo}', '{multiselect1}');
+                """
+                print(query)
+                # Asumimos que insert_data es una función definida para ejecutar la consulta SQL
+                #insert_data(connection, query)
     elif selected == "Gráficos":
         st.write("Sección de gráficos en construcción")
+
 
 # Comentar esta línea antes de enviar el código al usuario
 if __name__ == "__main__":
