@@ -27,6 +27,16 @@ def connect_to_database(host_name, user_name, user_password, db_name):
         print(f"The error '{e}' occurred")
     return connection
 
+def execute_select_query(connection, query):
+    cursor = connection.cursor()
+    try:
+        cursor.execute(query)
+        result = cursor.fetchall()  # Recupera todos los registros
+        return result
+    except Error as e:
+        print(f"The error '{e}' occurred")
+        return None
+
 
 # Función para insertar datos en la base de datos
 def insert_data(connection, query):
@@ -69,6 +79,15 @@ def get_options_based_on_selection(selection):
             options.extend(options_mapping.get(category, []))
         return options
 
+def consulta_tipos_activos(connection):
+    lista = ['Seleccione un tipo de activo...']
+
+    query_tipo_activo = f"SELECT * FROM tipo_activo"
+    result_tipo_activo = execute_select_query(connection,query_tipo_activo)
+    for item in result_tipo_activo:
+        lista.append(item[1])
+    return lista
+
 # Definición de la función principal del streamlit app
 def main():
     # Título del dashboard
@@ -78,19 +97,22 @@ def main():
         selected = option_menu("Menu", ["Formulario", 'Gráficos'],
                                icons=['house', 'gear'], menu_icon="cast", default_index=0)
     # Conexión a la base de datos
-    #connection = connect_to_database("localhost", "root", "password", "your_database")
+    connection = connect_to_database("localhost", "root", "Dfmm.03112002", "gestion_seguridad")
 
     if selected == "Formulario":
         # Creación del formulario
         with st.form(key='my_form'):
+
             nombre_activo = st.text_input(label="Ingresa el nombre del activo:")
-            tipo_activo = st.selectbox('Elige el tipo de activo:', ['Opción 1', 'Opción 2', 'Opción 3'])
+            
+            tipo_activo = st.selectbox('Elige el tipo de activo:', consulta_tipos_activos(connection))
+
             #multiselect = st.multiselect('Elige las amenazas:', ['Option A', 'Option B', 'Option C'])
-            multiselect = st.multiselect('Elige las amenazas:', ['Option A', 'Option B', 'Option C'],
+            tipo_amenaza = st.multiselect('Elige las amenazas:', ['Option A', 'Option B', 'Option C'],
                                          key='selected_category')
 
             # Esta variable debe inicializarse fuera del if para evitar errores de referencia
-            multiselect1_options = get_options_based_on_selection(multiselect)
+            multiselect1_options = get_options_based_on_selection(tipo_amenaza)
 
             #multiselect1 = st.multiselect('Elige los tipos de amenazas:', multiselect1_options)
             multiselect1 = st.multiselect("Selecciona items:", multiselect1_options, key='selected_items')
@@ -98,7 +120,7 @@ def main():
             # Botón para enviar el formulario completo
             submit_button = st.form_submit_button("Enviar")
 
-            if submit_button:
+            if submit_button and len(multiselect1) > 0:
                 query = f"""
                 INSERT INTO your_table (text_column, dropdown1_column, dropdown2_column, dropdown3_column)
                 VALUES ('{nombre_activo}', '{tipo_activo}', '{multiselect1}');

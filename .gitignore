@@ -15,6 +15,7 @@ downloads/
 eggs/
 .eggs/
 .idea/
+AppFlask/
 lib/
 lib64/
 parts/
