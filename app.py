@@ -1,4 +1,6 @@
 # Importación de librerías necesarias
+import decimal
+import json
 import streamlit as st
 import mysql.connector
 from mysql.connector import Error
@@ -54,19 +56,19 @@ def consulta_tipos_activos(connection):
     
     return {nombre: id for id, nombre in result_tipo_activo}
 
-def consulta_amenazas(connection):
+def consulta_tipo_amenaza(connection):
 
-    query_amenazas = f"SELECT a.amenaza_id, a.nombre FROM amenaza AS a"
+    query_amenazas = f"SELECT a.tipo_amenaza_id, a.nombre FROM tipo_amenaza AS a"
     result_amenazas = execute_select_query(connection,query_amenazas)
     data = {nombre: id for id, nombre in result_amenazas}
     return data
 
-def consulta_tipo_amenaza(connection, amenazas):
+def consulta_amenaza(connection, amenazas):
 
     lista = []
 
     for item in amenazas:
-        query_tipo_amenaza = f"SELECT * FROM tipo_amenaza ta JOIN amenaza a ON  ta.amenaza_id = a.amenaza_id WHERE a.nombre = '{item}';"
+        query_tipo_amenaza = f"SELECT * FROM amenaza ta JOIN tipo_amenaza a ON  ta.tipo_amenaza_id = a.tipo_amenaza_id WHERE a.nombre = '{item}';"
         result_tipo_amenaza = execute_select_query(connection,query_tipo_amenaza)
         for item in result_tipo_amenaza:
             lista.append(item[1])
@@ -74,21 +76,83 @@ def consulta_tipo_amenaza(connection, amenazas):
     return lista
 
 def consulta_escalar_valor(connection):
-    lista = []
 
-    query_escalar_valor = f"SELECT es.escalar_valor_id, es.nombre FROM escalar_valor AS es"
+    query_escalar_valor = f"SELECT es.escala_valor_id, es.nombre FROM escala_valor AS es"
     result_escalar_valor = execute_select_query(connection,query_escalar_valor)
     
     return {nombre: id for id, nombre in result_escalar_valor}
 
-def construccion_query_insert(nombre_activo, tipo_activo, tipos_amenazas):
+def consulta_valor_escala_valor(connection,id):
+    query = f"SELECT es.valor FROM escala_valor AS es WHERE escala_valor_id = {id}"
+    result_escalar_valor = execute_select_query(connection,query)
+    return result_escalar_valor[0][0]
+
+def construccion_query_insert_activo(nombre_activo, tipo_activo):
     query = f"""
-    INSERT INTO activo (nombre_activo, tipo_activo, tipo_amenaza)
-    VALUES ('{nombre_activo}', '{tipo_activo}', '{tipos_amenazas}');
+    INSERT INTO activo (nombre, tipo_activo_id)
+    VALUES ('{nombre_activo}', {tipo_activo});
     """
     return query
 
+def construccion_query_insert_detalle_valor(connection,list_detalle_valor_id, list_impacto_valor_id, activo_id):
+    
+    for i in range(len(list_detalle_valor_id)):
+        detalle_valor_id = list_detalle_valor_id[i]
+        escala_valor_id = list_impacto_valor_id[i]
+        query = f"""
+        INSERT INTO activo_escala_valor (activo_id, detalle_valor_id, escala_valor_id)
+        VALUES ('{activo_id}', '{detalle_valor_id}', '{escala_valor_id}'); 
+        """
+        insert_data(connection, query)
 
+def construccion_query_insert_transaccion(conexion,query):
+    cursor = conexion.cursor()
+    try:
+
+        cursor.execute("START TRANSACTION")
+        cursor.execute(query)
+
+        # Obtener el ID del nuevo registro insertado
+        new_id = cursor.lastrowid
+        cursor.execute("COMMIT")
+
+        conexion.commit()
+        return new_id
+    except Error as e:
+        cursor.execute("ROLLBACK")
+        print(f"Error insertando: error '{e}' occurred")
+        return None
+
+def consulta_probabilidad(conexion):
+    query = f"SELECT * FROM valoracion_amenazas"
+    result_query = execute_select_query(conexion, query)
+    # Convertir cada tupla en un diccionario
+    column_names = ['id', 'opciones', 'probabilidad', 'criterio']
+    result_dict = [dict(zip(column_names, row)) for row in result_query]
+    
+    # Función para manejar los objetos Decimal
+    def handle_decimal(o):
+        if isinstance(o, decimal.Decimal):
+            return float(o)
+        raise TypeError(f'Object of type {o.__class__.__name__} is not JSON serializable')
+
+    # Convertir la lista de diccionarios en una cadena JSON
+    result_json = json.dumps(result_dict, default=handle_decimal)
+    return result_json
+
+def opciones_probabilidad(json_probabilidad):
+    # Convertir la cadena JSON de nuevo en una lista de diccionarios
+    result_dict = json.loads(json_probabilidad)
+
+    # Extraer los IDs de cada elemento en el resultado
+    opciones = [item['opciones'] for item in result_dict]
+
+    return opciones
+
+def consulta_valor_probabilidad(connection, nombre):
+    query = f"SELECT v.probabilidad FROM valoracion_amenazas AS v WHERE opciones = '{nombre}'"
+    result_probabilidad = execute_select_query(connection, query)
+    return result_probabilidad[0][0]
 # Definición de la función principal del streamlit app
 def main():
     # Título del dashboard
@@ -101,7 +165,8 @@ def main():
     connection = connect_to_database("localhost", "root", "Dfmm.03112002", "gestion_seguridad")
 
     if selected == "Formulario":
-
+        dictionario_final = {}
+        
         nombre_activo = st.text_input(label="Ingresa el nombre del activo:")
         #-----------------------
         result_tipos_activos = consulta_tipos_activos(connection)
@@ -110,85 +175,106 @@ def main():
         tipo_activo_selected_id = result_tipos_activos[tipo_activo] if tipo_activo in result_tipos_activos else None
         #-----------------------
         
-        result_amenazas = consulta_amenazas(connection)
-        amenaza = st.multiselect('Elige las amenazas:', list(result_amenazas.keys()),
+        result_tipos_amenazas = consulta_tipo_amenaza(connection)
+        amenaza = st.multiselect('Elige los tipos de amenazas:', list(result_tipos_amenazas.keys()),
                                         key='selected_category', placeholder="Seleccione una amenaza...")
         #Este es el valor del id seleccionado de la amenaza
-        amenaza_selected_id = result_amenazas[amenaza] if amenaza in result_amenazas else None
-        print(amenaza_selected_id)
+        
         #-----------------------
-        multiselect1_options = consulta_tipo_amenaza(connection,amenaza)
+        result_amenazas = consulta_amenaza(connection,amenaza)
 
-        tipos_amenazas = st.multiselect("Selecciona los tipos de amenazas:", multiselect1_options, key='selected_items', 
+        tipos_amenazas = st.multiselect("Selecciona las amenazas:", result_amenazas, key='selected_items', 
                                         placeholder="Seleccione los tipos de amenazas...")
-
-        st.subheader("Valor")
 
         #Se obtiene el valor de la escala de valor
         escala_valor = consulta_escalar_valor(connection)
-
-        valor_col1, valor_col2, valor_col3, valor_col4, valor_col5 = st.columns(5)
-
-        with valor_col1:
-            #Se selecciona el nombre de la escala valor
-            valor_confidencialidad = st.selectbox("Confidencialidad:", list(escala_valor.keys()))
-            #Se extrae el id de la escala valor seleccionada
-            valor_confidencialidad_selected_id = escala_valor[valor_confidencialidad] if valor_confidencialidad in escala_valor else None
-        with valor_col2:
-            valor_integridad = st.selectbox("Integridad:", list(escala_valor.keys()))
-            valor_integridad_selected_id = escala_valor[valor_integridad] if valor_integridad in escala_valor else None
-        with valor_col3:
-            valor_disponibilidad = st.selectbox("Disponibilidad:", list(escala_valor.keys()))
-            valor_disponibilidad_selected_id = escala_valor[valor_disponibilidad] if valor_disponibilidad in escala_valor else None
-
-        with valor_col4:
-            valor_trazabilidad_datos = st.selectbox("Trazabilidad:", list(escala_valor.keys()))
-            valor_trazabilidad_datos_selected_id = escala_valor[valor_trazabilidad_datos] if valor_trazabilidad_datos in escala_valor else None
-
-        with valor_col5:
-            valor_autenticidad_datos = st.selectbox("Autenticidad:", list(escala_valor.keys()))
-            valor_autenticidad_datos_selected_id = escala_valor[valor_autenticidad_datos] if valor_autenticidad_datos in escala_valor else None
-
-
-        st.subheader("Impacto potencial")
-
-        # Crear un layout con columnas para los selectbox
-        impacto_col1, impacto_col2, impacto_col3, impacto_col4, impacto_col5 = st.columns(5)
         
-        with impacto_col1:
-            impacto_confidencialidad = st.selectbox("Confidencialidad: ", list(escala_valor.keys()))
-            impacto_confidencialidad_selected_id = escala_valor[impacto_confidencialidad] if impacto_confidencialidad in escala_valor else None
+        #Declaracion de variables
+        dict_detalle_valor = {}
+        suma_impacto_potencial = 0
+        probabilidad = 0
+        riesgo_potencial = 0
 
-        with impacto_col2:
-            impacto_integridad = st.selectbox("Integridad: ", list(escala_valor.keys()))
-            impacto_integridad_selected_id = escala_valor[impacto_integridad] if impacto_integridad in escala_valor else None
+        if tipos_amenazas != []:
+            for index, item in enumerate(tipos_amenazas):
+                st.subheader(f"Valor de: {item}")
+                suma_impacto_potencial = 0
+                valor_col1, valor_col2, valor_col3 = st.columns(3)
+                list_detalle_valor = []
+                with valor_col1:
+                    #Se selecciona el nombre de la escala valor
+                    valor_confidencialidad = st.selectbox("Confidencialidad:", list(escala_valor.keys()), key=f'valor_confidencialidad_{index}')
+                    #Se extrae el id de la escala valor seleccionada
+                    valor_confidencialidad_selected_id = escala_valor[valor_confidencialidad] if valor_confidencialidad in escala_valor else None
+                    
+                    #Se otiene el valor numerico para el impacto potencial
+                    valor_confidencialidad_selected = consulta_valor_escala_valor(connection,valor_confidencialidad_selected_id)
+                    suma_impacto_potencial += valor_confidencialidad_selected
+                    list_detalle_valor.append(valor_confidencialidad_selected_id)
 
-        with impacto_col3:
-            impacto_disponibilidad = st.selectbox("Disponibilidad: ", list(escala_valor.keys()))
-            impacto_disponibilidad_selected_id = escala_valor[impacto_disponibilidad] if impacto_disponibilidad in escala_valor else None
+                with valor_col2:
+                    valor_integridad = st.selectbox("Integridad:", list(escala_valor.keys()), key=f'valor_integridad_{index}')
+                    valor_integridad_selected_id = escala_valor[valor_integridad] if valor_integridad in escala_valor else None
 
-        with impacto_col4:
-            impacto_trazabilidad_datos = st.selectbox("Trazabilidad: ", list(escala_valor.keys()))
-            impacto_trazabilidad_datos_selected_id = escala_valor[impacto_trazabilidad_datos] if impacto_trazabilidad_datos in escala_valor else None
+                    valor_integridad_selected = consulta_valor_escala_valor(connection,valor_integridad_selected_id)
+                    suma_impacto_potencial += valor_integridad_selected
 
-        with impacto_col5:
-            impacto_autenticidad_datos = st.selectbox("Autenticidad: ", list(escala_valor.keys()))
-            impacto_autenticidad_datos_selected_id = escala_valor[impacto_autenticidad_datos] if impacto_autenticidad_datos in escala_valor else None
+                    list_detalle_valor.append(valor_integridad_selected_id)
 
+                with valor_col3:
+                    valor_disponibilidad = st.selectbox("Disponibilidad:", list(escala_valor.keys()), key=f'valor_disponibilidad_{index}')
+                    valor_disponibilidad_selected_id = escala_valor[valor_disponibilidad] if valor_disponibilidad in escala_valor else None
+                    
+                    valor_disponibilidad_selected = consulta_valor_escala_valor(connection,valor_disponibilidad_selected_id)
+                    suma_impacto_potencial += valor_disponibilidad_selected
+
+                    list_detalle_valor.append(valor_disponibilidad_selected_id)
+                
+                # Sumatoria de la valoracion del impacto, confidencialidad, integridad y disponibilidad
+                st.markdown("##### Impacto potencial: " + str(suma_impacto_potencial))
+
+                probabilidad = st.selectbox("Probabilidad: ", list(opciones_probabilidad(consulta_probabilidad(connection))), key=f'probabilidad_{index}')
+                valor_probabilidad = consulta_valor_probabilidad(connection,probabilidad)
+
+                riesgo_potencial = valor_probabilidad * suma_impacto_potencial
+                # ImpactoPotencial * Probabilidad
+                st.markdown("##### Riesgo potencial: " + str(riesgo_potencial))
+
+                st.markdown("---")
+
+                #La idea es que aqui se de esta manera se guardan los valores, para luego crear una funcion que inserte los datos en la bd y reciba por parametro el diccionario
+
+                dict_detalle_valor[item] = {'valores_ids': list_detalle_valor, 'impacto_potencial': suma_impacto_potencial, 'probabilidad': probabilidad, 'valor_probabilidad': float(valor_probabilidad), 'riesgo_potencial': float(riesgo_potencial)}
+
+                #Aqui se debe continuar con los salvaguardar, y con la linea de arriba, terminar de completar todos lo valores para el diccionario
 
         # Botón para enviar el formulario completo
         submit_button = st.button("Enviar")
-        print("Envio el Formulario")
+
+        #Llenado del diccionario
+        dictionario_final['nombre_activo'] = nombre_activo
+        dictionario_final['tipo_activo'] = tipo_activo
+        dictionario_final['tipos_amenazas'] = tipos_amenazas
+        dictionario_final['dict_detalle_valor'] = dict_detalle_valor
 
         if (submit_button and len(tipos_amenazas) > 0 and (tipo_activo != 'Seleccione un tipo de activo...' and tipo_activo != '') 
             and len(amenaza) > 0 and nombre_activo != ''):
             
-            query = f"""
-            INSERT INTO your_table (text_column, dropdown1_column, dropdown2_column, dropdown3_column)
-            VALUES ('{nombre_activo}', '{tipo_activo}', '{tipos_amenazas}');
-            """
+            print("Envio el Formulario")
             
-            print(query)
+            print(dictionario_final)
+            print("-----------------------------------------------------------------------")
+
+            # query = construccion_query_insert_activo(nombre_activo, tipo_activo_selected_id)
+            # id_activo = construccion_query_insert_transaccion(conexion=connection, query=query)
+            # print(id_activo)
+            # construccion_query_insert_detalle_valor(activo_id=id_activo, list_detalle_valor_id=list_detalle_valor, list_impacto_valor_id=list_impacto, connection=connection)
+
+
+
+            # print(query)
+            # print(list_detalle_valor)
+            # print(list_impacto)
             
             # Asumimos que insert_data es una función definida para ejecutar la consulta SQL
             #insert_data(connection, query)
