@@ -3,6 +3,7 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 
 from consultas_bd import *
+from insert_data import *
 from config import connect_to_database
 
 # Inicializar el estado de la sesión si es necesario
@@ -35,28 +36,29 @@ def main():
 
         # Tipos de amenazas        
         result_tipos_amenazas = consulta_tipo_amenaza(connection)
-        amenaza = st.multiselect('Elige los tipos de amenazas:', list(result_tipos_amenazas.keys()),
+        tipos_amenazas = st.multiselect('Elige los tipos de amenazas:', list(result_tipos_amenazas.keys()),
                                         key='selected_category', placeholder="Seleccione una amenaza...")
         
         # Amenazas
-        result_amenazas = consulta_amenaza(connection,amenaza)
-        tipos_amenazas = st.multiselect("Selecciona las amenazas:", result_amenazas, key='selected_items', 
+        result_amenazas = consulta_amenaza(connection,tipos_amenazas)
+        amenazas = st.multiselect("Selecciona las amenazas:", result_amenazas, key='selected_items', 
                                         placeholder="Seleccione los tipos de amenazas...")
 
         #Se obtiene el valor de la escala de valor
         escala_valor = consulta_escalar_valor(connection)
         
         #Declaracion de variables
-        dict_detalle_valor = {}
-        suma_impacto_potencial = 0
+        dict_amenazas = {}
         probabilidad = 0
         riesgo_potencial = 0
 
-        if tipos_amenazas != []:
-            for index, item in enumerate(tipos_amenazas):
+        if amenazas != []:
+            for index, item in enumerate(amenazas):
+                suma_impacto_potencial = 0
+
                 st.subheader(f"Valor de: {item}")
                 valor_col1, valor_col2, valor_col3 = st.columns(3)
-                list_detalle_valor = []
+                list_detalle_valor = {}
                 with valor_col1:
                     #Se selecciona el nombre de la escala valor
                     valor_confidencialidad = st.selectbox("Confidencialidad:", list(escala_valor.keys()), key=f'valor_confidencialidad_{index}')
@@ -65,21 +67,21 @@ def main():
                     #Se otiene el valor numerico para el impacto potencial
                     valor_confidencialidad_selected = consulta_valor_escala_valor(connection,valor_confidencialidad_selected_id)
                     suma_impacto_potencial += valor_confidencialidad_selected
-                    list_detalle_valor.append(valor_confidencialidad_selected_id)
+                    list_detalle_valor[3] = valor_confidencialidad_selected_id
 
                 with valor_col2:
                     valor_integridad = st.selectbox("Integridad:", list(escala_valor.keys()), key=f'valor_integridad_{index}')
                     valor_integridad_selected_id = escala_valor[valor_integridad] if valor_integridad in escala_valor else None
                     valor_integridad_selected = consulta_valor_escala_valor(connection,valor_integridad_selected_id)
                     suma_impacto_potencial += valor_integridad_selected
-                    list_detalle_valor.append(valor_integridad_selected_id)
+                    list_detalle_valor[2] = valor_integridad_selected_id
 
                 with valor_col3:
                     valor_disponibilidad = st.selectbox("Disponibilidad:", list(escala_valor.keys()), key=f'valor_disponibilidad_{index}')
                     valor_disponibilidad_selected_id = escala_valor[valor_disponibilidad] if valor_disponibilidad in escala_valor else None
                     valor_disponibilidad_selected = consulta_valor_escala_valor(connection,valor_disponibilidad_selected_id)
                     suma_impacto_potencial += valor_disponibilidad_selected
-                    list_detalle_valor.append(valor_disponibilidad_selected_id)
+                    list_detalle_valor[1] = valor_disponibilidad_selected_id
                 
                 # Impacto potencial
                 st.markdown("<div style='text-align: right'><b>Impacto potencial: " + str(suma_impacto_potencial) + "</b></div>", unsafe_allow_html=True)
@@ -87,6 +89,7 @@ def main():
                 # Probabilidad
                 probabilidad = st.selectbox("Probabilidad: ", list(opciones_probabilidad(consulta_probabilidad(connection))), key=f'probabilidad_{index}')
                 valor_probabilidad = consulta_valor_probabilidad(connection,probabilidad)
+                valoracion_amenaza_id = consulta_id_probabilidad(connection,probabilidad)
 
                 # Riesgo potencial
                 riesgo_potencial = valor_probabilidad * suma_impacto_potencial
@@ -121,9 +124,10 @@ def main():
                 st.markdown("---")
 
                 #La idea es que aqui se de esta manera se guardan los valores, para luego crear una funcion que inserte los datos en la bd y reciba por parametro el diccionario
+                amenaza_id = consulta_id_amenaza(connection,item)
 
-                dict_detalle_valor[item] = {'valores_ids': list_detalle_valor, 'impacto_potencial': suma_impacto_potencial, 
-                                            'probabilidad': probabilidad, 'valor_probabilidad': float(valor_probabilidad), 
+                dict_amenazas[item] = {'amenaza_id':amenaza_id,'valores_ids': list_detalle_valor, 'impacto_potencial': suma_impacto_potencial, 
+                                            'probabilidad': probabilidad, 'probabilidad_id': valoracion_amenaza_id,'valor_probabilidad': float(valor_probabilidad), 
                                             'riesgo_potencial': float(riesgo_potencial), 'tipo_salvaguarda': tipo_salvaguarda_selected_id,
                                             'salvaguarda': salvaguarda_selected_id, 'valoracion_salvaguarda': valoracion_salvaguarda_selected_id,
                                             'impacto_residual': float(impacto_residual), 'riesgo_residual': float(riesgo_residual)}
@@ -134,16 +138,18 @@ def main():
         #Llenado del diccionario
         dictionario_final['nombre_activo'] = nombre_activo
         dictionario_final['tipo_activo'] = tipo_activo_selected_id
-        dictionario_final['tipos_amenazas'] = tipos_amenazas
-        dictionario_final['dict_detalle_valor'] = dict_detalle_valor
+        dictionario_final['amenazas'] = amenazas
+        dictionario_final['dict_amenazas'] = dict_amenazas
 
-        if (submit_button and len(tipos_amenazas) > 0 and (tipo_activo != 'Seleccione un tipo de activo...' and tipo_activo != '') 
-            and len(amenaza) > 0 and nombre_activo != ''):
+        if (submit_button and len(amenazas) > 0 and (tipo_activo != 'Seleccione un tipo de activo...' and tipo_activo != '') 
+            and len(tipos_amenazas) > 0 and nombre_activo != ''):
             
             print("Envio el Formulario")
             
             print(dictionario_final)
             print("-----------------------------------------------------------------------")
+
+            construccion_query_insert_transaccion(conexion=connection, diccionario=dictionario_final)
 
             #Debo crear una funcion para que me guarde el resumen antes de la salvaguarda, almacenando, la propabilidad, el impacto potencial, activo,
             # para que mas adelante se realice la grafica
@@ -151,21 +157,6 @@ def main():
             #Debo crear una funcion para que me guarde el resumen despues de la salvaguarda, almacenando, la propabilidad, el impacto residual, activo,
             # para que mas adelante se realice la grafica
 
-
-
-            # query = construccion_query_insert_activo(nombre_activo, tipo_activo_selected_id)
-            # id_activo = construccion_query_insert_transaccion(conexion=connection, query=query)
-            # print(id_activo)
-            # construccion_query_insert_detalle_valor(activo_id=id_activo, list_detalle_valor_id=list_detalle_valor, list_impacto_valor_id=list_impacto, connection=connection)
-
-
-
-            # print(query)
-            # print(list_detalle_valor)
-            # print(list_impacto)
-            
-            # Asumimos que insert_data es una función definida para ejecutar la consulta SQL
-            #insert_data(connection, query)
         
     elif selected == "Gráficos":
         st.write("Sección de gráficos en construcción")
