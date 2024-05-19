@@ -28,6 +28,13 @@ def construccion_query_insert_activo_salvaguarda(salvaguarda, valoracion_salvagu
     """
     return query
 
+def construccion_query_resumen_activo_amenaza(activo_amenaza_id, impacto_potencial, riesgo_potencial, riesgo_residual, impacto_residual):
+    query = f"""
+    INSERT INTO resumen_activo_amenaza (activo_amenaza_id, impacto_potencial, riesgo_potencial, riesgo_residual, impacto_residual)
+    VALUES ('{activo_amenaza_id}', '{impacto_potencial}', '{riesgo_potencial}', '{riesgo_residual}', '{impacto_residual}');
+    """
+    return query
+
 #Ejecutar esta funcion para insertar todos los registros
 def construccion_query_insert_transaccion(conexion,diccionario):
     cursor = conexion.cursor()
@@ -69,6 +76,12 @@ def construccion_query_insert_transaccion(conexion,diccionario):
             numero_amenazas += 1
 
             #Hacer el insert de las tablas de resumen antes y resumen despues, además generar el grafico con ellas
+            query_insert_resumen = construccion_query_resumen_activo_amenaza(activo_amenaza_id, values_amenazas['impacto_potencial'], 
+                                                                             values_amenazas['riesgo_potencial'], values_amenazas['riesgo_residual'], 
+                                                                             values_amenazas['impacto_residual'])
+            
+            print("Query resumen: " + query_insert_resumen + "\n")
+            cursor.execute(query_insert_resumen)
 
         print("Numero de amenazas: " + str(numero_amenazas) + "\n")
         

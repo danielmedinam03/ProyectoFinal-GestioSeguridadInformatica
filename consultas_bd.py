@@ -120,3 +120,10 @@ def consulta_id_amenaza(conexion, nombre_amenaza):
     query = f"SELECT a.amenaza_id FROM amenaza AS a WHERE nombre = '{nombre_amenaza}'"
     result_query = execute_select_query(conexion, query)
     return result_query[0][0]
+
+def consulta_resumen_activo_amenaza(connection):
+    query = f"""Select aa.activo_amenaza_id, aa.valoracion_amenaza_id, 
+                raa.impacto_potencial, raa.impacto_residual from activo_amenaza AS aa
+                inner join resumen_activo_amenaza AS raa ON aa.activo_amenaza_id = raa.activo_amenaza_id"""
+    result = execute_select_query(connection, query)
+    return result

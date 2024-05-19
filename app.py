@@ -5,6 +5,7 @@ from streamlit_option_menu import option_menu
 from consultas_bd import *
 from insert_data import *
 from config import connect_to_database
+from grafico import *
 
 # Inicializar el estado de la sesión si es necesario
 if 'selected_category' not in st.session_state:
@@ -14,16 +15,17 @@ if 'selected_items' not in st.session_state:
 
 # Definición de la función principal del streamlit app
 def main():
-    # Título del dashboard
-    st.title("Registro de activos")
 
     with st.sidebar:
-        selected = option_menu("Menu", ["Formulario", 'Gráficos'],
+        selected = option_menu("Menu", ["Formulario", 'Mapas de calor'],
                                icons=['house', 'gear'], menu_icon="cast", default_index=0)
     # Conexión a la base de datos
     connection = connect_to_database("localhost", "root", "Dfmm.03112002", "gestion_seguridad")
 
     if selected == "Formulario":
+        
+    # Título del dashboard
+        st.title("Registro de activos")
         dictionario_final = {}
         
         # Nombre de activo
@@ -150,16 +152,18 @@ def main():
             print("-----------------------------------------------------------------------")
 
             construccion_query_insert_transaccion(conexion=connection, diccionario=dictionario_final)
-
-            #Debo crear una funcion para que me guarde el resumen antes de la salvaguarda, almacenando, la propabilidad, el impacto potencial, activo,
-            # para que mas adelante se realice la grafica
-
-            #Debo crear una funcion para que me guarde el resumen despues de la salvaguarda, almacenando, la propabilidad, el impacto residual, activo,
-            # para que mas adelante se realice la grafica
-
+            st.success("Se ha guardado correctamente !")
+        else:
+            # Mostrar mensaje de error
+            st.warning("Completa el formulario correctamente antes de enviarlo.")
         
-    elif selected == "Gráficos":
-        st.write("Sección de gráficos en construcción")
+    elif selected == "Mapas de calor":        
+        
+        # Generar el mapa de calor antes de los salvaguardas
+        generar_mapa(consulta_resumen_activo_amenaza(connection), 'Mapa de Calor antes de los salvaguardas', 'Impacto Potencial')
+
+        # Generar el mapa de calor después de los salvaguardas
+        generar_mapa(consulta_resumen_activo_amenaza(connection), 'Mapa de Calor después de los salvaguardas', 'Impacto Residual')
 
 
 # Comentar esta línea antes de enviar el código al usuario
